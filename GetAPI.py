@@ -125,7 +125,7 @@ def get_all_messages():
         return jsonify({"error": "Database error"}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run()
 
 
 
