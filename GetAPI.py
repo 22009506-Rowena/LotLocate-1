@@ -12,8 +12,8 @@ logging.basicConfig(level=logging.DEBUG)
 app = Flask(__name__)
 CORS(app)
 
-# Global variable to store the latest message
-latest_message = {}
+# Global list to store messages
+message_list = []
 
 # MQTT Callbacks
 def on_connect(client, userdata, flags, rc, properties=None):
@@ -21,7 +21,7 @@ def on_connect(client, userdata, flags, rc, properties=None):
     client.subscribe("environment/database/#")
 
 def on_message(client, userdata, msg):
-    global latest_message
+    global message_list
     payload = msg.payload.decode()
     logging.info("Received message: %s", payload)
     try:
@@ -29,10 +29,8 @@ def on_message(client, userdata, msg):
     except json.JSONDecodeError:
         message_json = {"error": "Invalid JSON"}
     
-    latest_message = {
-        "items": message_json
-    }
-    logging.info("Updated latest_message: %s", latest_message)
+    message_list.append(message_json)
+    logging.info("Updated message_list: %s", message_list)
 
 # Initialize and configure the MQTT client
 client = mqtt.Client(protocol=mqtt.MQTTv5)
@@ -53,10 +51,22 @@ mqtt_thread.start()
 # Flask route to retrieve the latest message
 @app.route('/latest_message', methods=['GET'])
 def get_latest_message():
-    return jsonify(latest_message)
+    logging.info("Fetching latest message")
+    if message_list:
+        logging.info("Latest message: %s", message_list[-1])
+        return jsonify({"latest_message": message_list[-1]})
+    else:
+        logging.info("No messages found")
+        return jsonify({"latest_message": {}})
+
+# Flask route to retrieve all messages
+@app.route('/all_messages', methods=['GET'])
+def get_all_messages():
+    logging.info("Fetching all messages")
+    return jsonify({"all_messages": message_list})
 
 if __name__ == '__main__':
-    app.run()
+    app.run(host='0.0.0.0', port=5000)
 
 
 
