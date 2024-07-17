@@ -13,9 +13,6 @@ logging.basicConfig(level=logging.DEBUG)
 app = Flask(__name__)
 CORS(app)
 
-# Global list to store messages
-message_list = []
-
 # Initialize SQLite3 database
 def init_db():
     conn = sqlite3.connect('mqtt_messages.db')
@@ -38,7 +35,6 @@ def on_connect(client, userdata, flags, rc, properties=None):
     client.subscribe("environment/database/#")
 
 def on_message(client, userdata, msg):
-    global message_list
     payload = msg.payload.decode()
     logging.info("Received message: %s", payload)
     try:
@@ -51,12 +47,11 @@ def on_message(client, userdata, msg):
     # Insert message into SQLite3 database
     conn = sqlite3.connect('mqtt_messages.db')
     c = conn.cursor()
-    c.execute('INSERT INTO messages (topic, payload) VALUES (?, ?)', (msg.topic, payload))
+    c.execute('INSERT INTO messages (topic, payload) VALUES (?, ?)', (msg.topic, json.dumps(message_json)))
     conn.commit()
     conn.close()
 
-    message_list.append(message_json)
-    logging.info("Updated message_list: %s", message_list)
+    logging.info("Stored message in SQLite3 database")
 
 # Initialize and configure the MQTT client
 client = mqtt.Client(protocol=mqtt.MQTTv5)
@@ -82,12 +77,12 @@ def get_latest_message():
     logging.info("Fetching latest message")
     conn = sqlite3.connect('mqtt_messages.db')
     c = conn.cursor()
-    c.execute('SELECT * FROM messages ORDER BY id DESC LIMIT 1')
+    c.execute('SELECT payload FROM messages ORDER BY id DESC LIMIT 1')
     row = c.fetchone()
     conn.close()
     
     if row:
-        latest_message = {"id": row[0], "topic": row[1], "payload": row[2]}
+        latest_message = json.loads(row[0])  # Ensure the payload is returned as JSON
         logging.info("Latest message: %s", latest_message)
         return jsonify({"latest_message": latest_message})
     else:
@@ -100,15 +95,14 @@ def get_all_messages():
     logging.info("Fetching all messages")
     conn = sqlite3.connect('mqtt_messages.db')
     c = conn.cursor()
-    c.execute('SELECT * FROM messages')
+    c.execute('SELECT payload FROM messages')
     rows = c.fetchall()
     conn.close()
     
-    all_messages = [{"id": row[0], "topic": row[1], "payload": row[2]} for row in rows]
+    all_messages = [json.loads(row[0]) for row in rows]  # Ensure each payload is returned as JSON
     return jsonify({"all_messages": all_messages})
 
 if __name__ == '__main__':
     app.run()
-
 
 
