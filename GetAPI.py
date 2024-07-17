@@ -1,10 +1,13 @@
-
 from flask import Flask, jsonify
 from flask_cors import CORS  
 import threading
 import paho.mqtt.client as mqtt
 import json
 import os
+import logging
+
+# Setup logging
+logging.basicConfig(level=logging.DEBUG)
 
 app = Flask(__name__)
 CORS(app)
@@ -14,12 +17,13 @@ latest_message = {}
 
 # MQTT Callbacks
 def on_connect(client, userdata, flags, rc, properties=None):
-    print("Connected with result code " + str(rc))
+    logging.info("Connected with result code %s", str(rc))
     client.subscribe("environment/database/#")
 
 def on_message(client, userdata, msg):
     global latest_message
     payload = msg.payload.decode()
+    logging.info("Received message: %s", payload)
     try:
         message_json = json.loads(payload)
     except json.JSONDecodeError:
@@ -28,6 +32,7 @@ def on_message(client, userdata, msg):
     latest_message = {
         "items": message_json
     }
+    logging.info("Updated latest_message: %s", latest_message)
 
 # Initialize and configure the MQTT client
 client = mqtt.Client(protocol=mqtt.MQTTv5)
