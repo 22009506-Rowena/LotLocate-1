@@ -82,9 +82,13 @@ def get_latest_message():
     conn.close()
     
     if row:
-        latest_message = json.loads(row[0])  # Ensure the payload is returned as JSON
-        logging.info("Latest message: %s", latest_message)
-        return jsonify({"latest_message": latest_message})
+        try:
+            latest_message = json.loads(row[0])  # Ensure the payload is returned as JSON
+            logging.info("Latest message: %s", latest_message)
+            return jsonify({"latest_message": latest_message})
+        except json.JSONDecodeError:
+            logging.error("Failed to decode JSON from database")
+            return jsonify({"error": "Invalid JSON in database"}), 500
     else:
         logging.info("No messages found")
         return jsonify({"latest_message": {}})
@@ -99,7 +103,15 @@ def get_all_messages():
     rows = c.fetchall()
     conn.close()
     
-    all_messages = [json.loads(row[0]) for row in rows]  # Ensure each payload is returned as JSON
+    all_messages = []
+    for row in rows:
+        try:
+            message = json.loads(row[0])
+            all_messages.append(message)
+        except json.JSONDecodeError:
+            logging.error("Failed to decode JSON from database row: %s", row)
+            all_messages.append({"error": "Invalid JSON"})
+    
     return jsonify({"all_messages": all_messages})
 
 if __name__ == '__main__':
