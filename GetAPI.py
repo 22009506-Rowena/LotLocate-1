@@ -3,7 +3,6 @@ from flask_cors import CORS
 import threading
 import paho.mqtt.client as mqtt
 import json
-import os
 import logging
 import sqlite3
 
@@ -31,8 +30,16 @@ init_db()
 
 # MQTT Callbacks
 def on_connect(client, userdata, flags, rc, properties=None):
-    logging.info("Connected with result code %s", str(rc))
-    client.subscribe("environment/database/#")
+    if rc == 0:
+        logging.info("Connected to MQTT broker")
+        client.subscribe("environment/database/#")
+    else:
+        logging.error("Failed to connect, return code %d\n", rc)
+
+def on_disconnect(client, userdata, rc):
+    logging.warning("Disconnected from MQTT broker")
+    if rc != 0:
+        logging.error("Unexpected disconnection.")
 
 def on_message(client, userdata, msg):
     payload = msg.payload.decode()
@@ -58,6 +65,7 @@ def on_message(client, userdata, msg):
 # Initialize and configure the MQTT client
 client = mqtt.Client(protocol=mqtt.MQTTv5)
 client.on_connect = on_connect
+client.on_disconnect = on_disconnect
 client.on_message = on_message
 
 client.tls_set()  # Setup TLS, adjust with proper certs if necessary
@@ -66,8 +74,13 @@ client.connect("olivealkali-pos5qd.a01.euc1.aws.hivemq.cloud", 8883, 60)  # Conn
 
 # Start MQTT loop in a separate thread
 def mqtt_loop():
-    logging.info("Starting MQTT loop")
-    client.loop_forever()
+    while True:
+        try:
+            logging.info("Starting MQTT loop")
+            client.loop_forever()
+        except Exception as e:
+            logging.error("MQTT loop error: %s", e)
+            client.reconnect()
 
 mqtt_thread = threading.Thread(target=mqtt_loop)
 mqtt_thread.start()
@@ -88,13 +101,16 @@ def get_latest_message():
             try:
                 latest_message = json.loads(row[0])  # Ensure the payload is returned as JSON
                 logging.info("Latest message: %s", latest_message)
-                return jsonify({"latest_message": latest_message})
+                # Extract and return necessary details
+                result = {"items":{"IncomingCar": latest_message.get("IncomingCar"),"OutgoingCar": latest_message.get("OutgoingCar"), "TotalSlots": latest_message.get("TotalSlots"),"Totalavailable": latest_message.get("Totalavailable")
+                }}
+                return jsonify(result)
             except json.JSONDecodeError:
                 logging.error("Failed to decode JSON from database")
                 return jsonify({"error": "Invalid JSON in database"}), 500
         else:
             logging.info("No messages found")
-            return jsonify({"latest_message": {}})
+            return jsonify({})
     except sqlite3.Error as e:
         logging.error("SQLite error: %s", e)
         return jsonify({"error": "Database error"}), 500
@@ -114,18 +130,20 @@ def get_all_messages():
         for row in rows:
             try:
                 message = json.loads(row[0])
-                all_messages.append(message)
+                # Extract necessary details
+                result ={"items": {"IncomingCar": message.get("IncomingCar"),"OutgoingCar": message.get("OutgoingCar"),"TotalSlots": message.get("TotalSlots"),"Totalavailable": message.get("Totalavailable")
+                }}
+                all_messages.append(result)
             except json.JSONDecodeError:
                 logging.error("Failed to decode JSON from database row: %s", row)
                 all_messages.append({"error": "Invalid JSON"})
         
-        return jsonify({"all_messages": all_messages})
+        return jsonify(all_messages)
     except sqlite3.Error as e:
         logging.error("SQLite error: %s", e)
         return jsonify({"error": "Database error"}), 500
 
 if __name__ == '__main__':
     app.run()
-
 
 
