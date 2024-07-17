@@ -40,8 +40,8 @@ client.on_connect = on_connect
 client.on_message = on_message
 
 client.tls_set()  # Setup TLS, adjust with proper certs if necessary
-client.username_pw_set("hivemq.webclient.1720262723667", "#WC%8?ib9&BDpa36qAEf")  # Update with actual credentials
-client.connect("05b6d7489be942a8843f0528e4c87a7e.s1.eu.hivemq.cloud", 8883, 60)  # Connect with TLS on port 8883
+client.username_pw_set("hivemq.webclient.1721189577614", "UT801Op#W,N4$oayjDq.")  # Update with actual credentials
+client.connect("olivealkali-pos5qd.a01.euc1.aws.hivemq.cloud", 8883, 60)  # Connect with TLS on port 8883
 
 # Start MQTT loop in a separate thread
 def mqtt_loop():
@@ -57,5 +57,7 @@ def get_latest_message():
 
 if __name__ == '__main__':
     app.run()
+
+
 
 
