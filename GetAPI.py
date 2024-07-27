@@ -39,7 +39,7 @@ def on_disconnect(client, userdata, rc):
     logging.warning("Disconnected from MQTT broker")
     if rc != 0:
         logging.error("Unexpected disconnection.")
-    client.subscribe("environment/LotLocate/#")     # retrieve all records stored in records 
+    client.reconnect()  # Reconnect if disconnected
 
 def on_message(client, userdata, msg):
     payload = msg.payload.decode()
@@ -63,8 +63,6 @@ def on_message(client, userdata, msg):
         logging.error("SQLite error: %s", e)
 
 # Initialize and configure the MQTT client
-
-# connect to MQTT server 
 client = mqtt.Client(protocol=mqtt.MQTTv5)
 client.on_connect = on_connect
 client.on_disconnect = on_disconnect
@@ -72,7 +70,7 @@ client.on_message = on_message
 
 client.tls_set()  # Setup TLS, adjust with proper certs if necessary
 client.username_pw_set("hivemq.webclient.1722080464728", "X<C@GS3yn4>k5a:gEKb7")
-client.connect("olivealkali-pos5qd.a01.euc1.aws.hivemq.cloud", 8883)
+client.connect("olivealkali-pos5qd.a01.euc1.aws.hivemq.cloud", 8883, 60)
 
 # Start MQTT loop in a separate thread
 def mqtt_loop():
@@ -83,7 +81,6 @@ def mqtt_loop():
         except Exception as e:
             logging.error("MQTT loop error: %s", e)
             client.reconnect()
-client.loop_forever() 
 
 mqtt_thread = threading.Thread(target=mqtt_loop)
 mqtt_thread.start()
@@ -104,9 +101,11 @@ def get_latest_message():
             try:
                 latest_message = json.loads(row[0])  # Ensure the payload is returned as JSON
                 logging.info("Latest message: %s", latest_message)
-                # Extract and return necessary details
-                latest_message = json.loads(row[0]) 
-                result = {"items":{"IncomingCar": latest_message.get("IncomingCar"),"OutgoingCar": latest_message.get("OutgoingCar"), "TotalSlots": latest_message.get("TotalSlots"),"Totalavailable": latest_message.get("Totalavailable")
+                result = {"items": {
+                    "IncomingCar": latest_message.get("IncomingCar"),
+                    "OutgoingCar": latest_message.get("OutgoingCar"),
+                    "TotalSlots": latest_message.get("TotalSlots"),
+                    "Totalavailable": latest_message.get("Totalavailable")
                 }}
                 return jsonify(result)
             except json.JSONDecodeError:
@@ -118,6 +117,7 @@ def get_latest_message():
     except sqlite3.Error as e:
         logging.error("SQLite error: %s", e)
         return jsonify({"error": "Database error"}), 500
+
 # Flask route to retrieve all messages
 @app.route('/all_messages', methods=['GET'])
 def get_all_messages():
@@ -133,8 +133,11 @@ def get_all_messages():
         for row in rows:
             try:
                 message = json.loads(row[0])
-                # Extract necessary details
-                result ={"items": {"IncomingCar": message.get("IncomingCar"),"OutgoingCar": message.get("OutgoingCar"),"TotalSlots": message.get("TotalSlots"),"Totalavailable": message.get("Totalavailable")
+                result = {"items": {
+                    "IncomingCar": message.get("IncomingCar"),
+                    "OutgoingCar": message.get("OutgoingCar"),
+                    "TotalSlots": message.get("TotalSlots"),
+                    "Totalavailable": message.get("Totalavailable")
                 }}
                 all_messages.append(result)
             except json.JSONDecodeError:
@@ -147,4 +150,4 @@ def get_all_messages():
         return jsonify({"error": "Database error"}), 500
 
 if __name__ == '__main__':
-    app.run()
+    app.run(debug=True, host='0.0.0.0')  # Set host to '0.0.0.0' for external access
