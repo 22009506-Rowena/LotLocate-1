@@ -1,11 +1,10 @@
-from flask import Flask, jsonify, Response
+from flask import Flask, jsonify
 from flask_cors import CORS  
 import threading
 import paho.mqtt.client as mqtt
 import json
 import logging
 import sqlite3
-import time
 
 # Setup logging
 logging.basicConfig(level=logging.DEBUG)
@@ -13,9 +12,8 @@ logging.basicConfig(level=logging.DEBUG)
 app = Flask(__name__)
 CORS(app)
 
-# Initialize database
 def init_db():
-    conn = sqlite3.connect('carcount.db', check_same_thread=False)
+    conn = sqlite3.connect('carcount.db')
     c = conn.cursor()
     c.execute('''
         CREATE TABLE IF NOT EXISTS messages (
@@ -28,16 +26,6 @@ def init_db():
     conn.close()
 
 init_db()
-
-# Database interaction function
-def execute_db_query(query, params=()):
-    conn = sqlite3.connect('carcount.db', check_same_thread=False)
-    c = conn.cursor()
-    c.execute(query, params)
-    conn.commit()
-    results = c.fetchall()
-    conn.close()
-    return results
 
 # MQTT Callbacks
 def on_connect(client, userdata, flags, rc, properties=None):
@@ -65,7 +53,11 @@ def on_message(client, userdata, msg):
 
     # Insert message into SQLite3 database
     try:
-        execute_db_query('INSERT INTO messages (topic, payload) VALUES (?, ?)', (msg.topic, json.dumps(message_json)))
+        conn = sqlite3.connect('carcount.db')
+        c = conn.cursor()
+        c.execute('INSERT INTO messages (topic, payload) VALUES (?, ?)', (msg.topic, json.dumps(message_json)))
+        conn.commit()
+        conn.close()
         logging.info("Stored message in SQLite3 database")
     except sqlite3.Error as e:
         logging.error("SQLite error: %s", e)
@@ -94,40 +86,48 @@ mqtt_thread = threading.Thread(target=mqtt_loop)
 mqtt_thread.start()
 logging.info("Started MQTT thread")
 
-# Function to generate server-sent events
-def generate_latest_message():
-    last_id = 0
-    while True:
-        row = execute_db_query('SELECT id, payload FROM messages WHERE id > ? ORDER BY id DESC LIMIT 1', (last_id,))
-        if row:
-            last_id = row[0][0]
-            try:
-                latest_message = json.loads(row[0][1])  # Ensure the payload is returned as JSON
-                logging.info("Latest message: %s", latest_message)
-                result = {
-                    "items": {
-                        "IncomingCar": latest_message.get("IncomingCar"),
-                        "OutgoingCar": latest_message.get("OutgoingCar"),
-                        "TotalSlots": latest_message.get("TotalSlots"),
-                        "Totalavailable": latest_message.get("Totalavailable")
-                    }
-                }
-                yield f"data: {json.dumps(result)}\n\n"
-            except json.JSONDecodeError:
-                logging.error("Failed to decode JSON from database")
-        time.sleep(1)
-
-# Flask route to serve server-sent events
+# Flask route to retrieve the latest message
 @app.route('/latest_message', methods=['GET'])
 def get_latest_message():
-    return Response(generate_latest_message(), content_type='text/event-stream')
+    logging.info("Fetching latest message")
+    try:
+        conn = sqlite3.connect('carcount.db')
+        c = conn.cursor()
+        c.execute('SELECT payload FROM messages ORDER BY id DESC LIMIT 1')
+        row = c.fetchone()
+        conn.close()
+
+        if row:
+            try:
+                latest_message = json.loads(row[0])  # Ensure the payload is returned as JSON
+                logging.info("Latest message: %s", latest_message)
+                result = {"items": {
+                    "IncomingCar": latest_message.get("IncomingCar"),
+                    "OutgoingCar": latest_message.get("OutgoingCar"),
+                    "TotalSlots": latest_message.get("TotalSlots"),
+                    "Totalavailable": latest_message.get("Totalavailable")
+                }}
+                return jsonify(result)
+            except json.JSONDecodeError:
+                logging.error("Failed to decode JSON from database")
+                return jsonify({"error": "Invalid JSON in database"}), 500
+        else:
+            logging.info("No messages found")
+            return jsonify({})
+    except sqlite3.Error as e:
+        logging.error("SQLite error: %s", e)
+        return jsonify({"error": "Database error"}), 500
 
 # Flask route to retrieve all messages
 @app.route('/all_messages', methods=['GET'])
 def get_all_messages():
     logging.info("Fetching all messages")
     try:
-        rows = execute_db_query('SELECT payload FROM messages')
+        conn = sqlite3.connect('carcount.db')
+        c = conn.cursor()
+        c.execute('SELECT payload FROM messages')
+        rows = c.fetchall()
+        conn.close()
         
         all_messages = []
         for row in rows:
@@ -151,3 +151,4 @@ def get_all_messages():
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0')  # Set host to '0.0.0.0' for external access
+
