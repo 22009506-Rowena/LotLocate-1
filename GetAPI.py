@@ -3,11 +3,7 @@ from flask_cors import CORS
 import threading
 import paho.mqtt.client as mqtt
 import json
-import logging
 import sqlite3
-
-# Setup logging
-logging.basicConfig(level=logging.DEBUG)
 
 app = Flask(__name__)
 CORS(app)
@@ -27,28 +23,25 @@ def init_db():
 
 init_db()
 
-# MQTT Callbacks
 def on_connect(client, userdata, flags, rc, properties=None):
     if rc == 0:
-        logging.info("Connected to MQTT broker")
         client.subscribe("environment/LotLocate/#")
     else:
-        logging.error("Failed to connect, return code %d\n", rc)
+        print(f"Failed to connect")
 
 def on_disconnect(client, userdata, rc):
-    logging.warning("Disconnected from MQTT broker")
+    print("Disconnected")
     if rc != 0:
-        logging.error("Unexpected disconnection.")
-    client.reconnect()  # Reconnect if disconnected
+        print("Unexpected disconnection.")
+
 
 def on_message(client, userdata, msg):
     payload = msg.payload.decode()
-    logging.info("Received message: %s", payload)
     try:
         message_json = json.loads(payload)
-        logging.info("Decoded JSON message: %s", message_json)
+        print(f"Decoded JSON message: {message_json}")
     except json.JSONDecodeError:
-        logging.error("Failed to decode JSON")
+        print("Failed to decode JSON")
         message_json = {"error": "Invalid JSON"}
 
     # Insert message into SQLite3 database
@@ -58,9 +51,9 @@ def on_message(client, userdata, msg):
         c.execute('INSERT INTO messages (topic, payload) VALUES (?, ?)', (msg.topic, json.dumps(message_json)))
         conn.commit()
         conn.close()
-        logging.info("Stored message in SQLite3 database")
+        print("Stored message in SQLite3 database")
     except sqlite3.Error as e:
-        logging.error("SQLite error: %s", e)
+        print(f"SQLite error: {e}")
 
 # Initialize and configure the MQTT client
 client = mqtt.Client(protocol=mqtt.MQTTv5)
@@ -76,20 +69,20 @@ client.connect("olivealkali-pos5qd.a01.euc1.aws.hivemq.cloud", 8883, 60)
 def mqtt_loop():
     while True:
         try:
-            logging.info("Starting MQTT loop")
+            print("Starting MQTT loop")
             client.loop_forever()
         except Exception as e:
-            logging.error("MQTT loop error: %s", e)
+            print(f"MQTT loop error: {e}")
             client.reconnect()
 
 mqtt_thread = threading.Thread(target=mqtt_loop)
 mqtt_thread.start()
-logging.info("Started MQTT thread")
+print("Started MQTT thread")
 
 # Flask route to retrieve the latest message
 @app.route('/latest_message', methods=['GET'])
 def get_latest_message():
-    logging.info("Fetching latest message")
+    print("Fetching latest message")
     try:
         conn = sqlite3.connect('carcount.db')
         c = conn.cursor()
@@ -99,8 +92,8 @@ def get_latest_message():
 
         if row:
             try:
-                latest_message = json.loads(row[0])  # Ensure the payload is returned as JSON
-                logging.info("Latest message: %s", latest_message)
+                latest_message = json.loads(row[0])  
+                print(f"Latest message: {latest_message}")
                 result = {"items": {
                     "IncomingCar": latest_message.get("IncomingCar"),
                     "OutgoingCar": latest_message.get("OutgoingCar"),
@@ -109,46 +102,17 @@ def get_latest_message():
                 }}
                 return jsonify(result)
             except json.JSONDecodeError:
-                logging.error("Failed to decode JSON from database")
+                print("Failed to decode JSON from database")
                 return jsonify({"error": "Invalid JSON in database"}), 500
         else:
-            logging.info("No messages found")
+            print("No messages found")
             return jsonify({})
     except sqlite3.Error as e:
-        logging.error("SQLite error: %s", e)
-        return jsonify({"error": "Database error"}), 500
-
-# Flask route to retrieve all messages
-@app.route('/all_messages', methods=['GET'])
-def get_all_messages():
-    logging.info("Fetching all messages")
-    try:
-        conn = sqlite3.connect('carcount.db')
-        c = conn.cursor()
-        c.execute('SELECT payload FROM messages')
-        rows = c.fetchall()
-        conn.close()
-        
-        all_messages = []
-        for row in rows:
-            try:
-                message = json.loads(row[0])
-                result = {"items": {
-                    "IncomingCar": message.get("IncomingCar"),
-                    "OutgoingCar": message.get("OutgoingCar"),
-                    "TotalSlots": message.get("TotalSlots"),
-                    "Totalavailable": message.get("Totalavailable")
-                }}
-                all_messages.append(result)
-            except json.JSONDecodeError:
-                logging.error("Failed to decode JSON from database row: %s", row)
-                all_messages.append({"error": "Invalid JSON"})
-        
-        return jsonify(all_messages)
-    except sqlite3.Error as e:
-        logging.error("SQLite error: %s", e)
+        print(f"SQLite error: {e}")
         return jsonify({"error": "Database error"}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0')  # Set host to '0.0.0.0' for external access
+    app.run() 
+
+
 
