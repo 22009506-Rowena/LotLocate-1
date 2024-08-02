@@ -19,7 +19,7 @@ def add_record():
     car_data.append(record)
     return jsonify({"message": "Record added successfully"}), 201
 
-@app.route('/latest_record', methods=['GET'])
+@app.route('/latest_message', methods=['GET'])
 def get_latest_record():
     if car_data:
         latest_record = car_data[-1]
