@@ -1,8 +1,6 @@
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
-
-# In-memory database
 car_data = []
 
 @app.route('/add_record', methods=['POST'])
